@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Kuya Vince Store · Live Barcode Scanner</title>
+<style>
+:root{--teal:#0B3C49;--cream:#FBF3E4;--coral:#FF6B50;--aqua:#6BCBC5;--gold:#FFC047}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--teal);font:14px/1.45 -apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif}
+.shell{max-width:570px;margin:0 auto;padding:14px 12px 42px}.banner{background:linear-gradient(120deg,#0B3C49,#1b6370);color:white;padding:18px;border-radius:18px;display:flex;align-items:center;justify-content:space-between;gap:14px}.banner h1{margin:0;font:700 25px/1.15 Georgia,serif}.banner p{font-size:12px;color:#c5e8de;margin:7px 0 0}.logo{width:68px;height:68px;border-radius:15px;background:#fbf3e4;border:3px solid #ffc047;display:grid;place-items:center;color:#0B3C49;font-size:36px;flex-shrink:0}
+.card{border:1px solid #e4d9c6;background:#fffdf8;margin-top:12px;border-radius:15px;padding:14px}.label{font-weight:850;margin-bottom:9px;font-size:12px}.camera{background:#123742;min-height:215px;border-radius:12px;overflow:hidden;display:grid;place-items:center;color:#e0f4f0;text-align:center;padding:9px}#reader{width:100%;min-height:175px}#reader video{object-fit:cover;border-radius:9px}#reader img{max-width:100%}.controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}button{font:inherit;font-weight:800;min-height:43px;border:0;border-radius:10px;padding:10px 14px;cursor:pointer;background:var(--teal);color:white;flex:1}button.outline{background:#e2f1eb;color:var(--teal)}button.coral{background:var(--coral);color:white}button:disabled{opacity:.55;cursor:default}
+input{width:100%;min-height:44px;border-radius:9px;border:1px solid #c4d7d0;color:#0B3C49;background:white;padding:10px;font-size:17px}label{display:block;font-size:12px;font-weight:800;margin-bottom:6px}#status{margin-top:10px;padding:9px 10px;background:#e3f3ed;border-radius:9px;color:#234f56;font-size:12px;overflow-wrap:anywhere}#status.error{background:#ffebe4;color:#a24028}#success{display:none;margin-top:12px;padding:12px;border:2px solid #6BCBC5;background:#e8f7ef;border-radius:12px}#success strong{display:block;font-size:28px;letter-spacing:1px;margin-bottom:7px;overflow-wrap:anywhere}#photo{display:none}.note{font-size:11px;color:#667d80;margin:8px 0 0}.optrow{display:flex;justify-content:space-between;align-items:center;gap:8px}#permission{font-size:11px;color:#a2531d}.extlink{display:block;text-align:center;margin-top:12px;color:#1a717f;font-size:12px}
+</style></head><body>
+<main class="shell">
+<header class="banner"><div><h1>Live Barcode Scanner</h1><p>Kuya Vince Store · iPhone Safari / Android Chrome</p></div><div class="logo" aria-hidden="true">▥</div></header>
+<section class="card"><div class="optrow"><div class="label">Camera scanner</div><span id="permission">Secure HTTPS required</span></div>
+<div class="camera"><div id="reader">Tap “Start live camera” and allow permission.</div></div>
+<div class="controls"><button type="button" id="start">📷 Start live camera</button><button type="button" id="stop" class="outline" disabled>Stop</button></div>
+<div id="status" role="status">Open this page directly in Safari or Chrome, not inside an app's in-app browser.</div>
+<div id="success" aria-live="polite"><span>Scanned barcode</span><strong id="found"></strong><div class="controls"><button type="button" id="return" class="coral">Send to Kuya Vince POS</button><button type="button" id="copy" class="outline">Copy digits</button></div><p class="note">When the browser blocks sending to the POS tab, tap Copy digits and paste them into the barcode field in the POS.</p></div>
+</section>
+<section class="card"><label for="typed">Or type barcode digits</label><input id="typed" type="text" inputmode="numeric" pattern="[0-9]{6,20}" maxlength="20" autocomplete="off" placeholder="EAN-13, UPC-A, etc."><div class="controls"><button type="button" id="manual" class="outline">Use typed barcode</button><label for="photo" style="flex:1;margin:0;text-align:center;min-height:43px;padding:11px;border-radius:10px;background:#e2f1eb;color:#0B3C49;cursor:pointer">📸 Take barcode photo</label><input type="file" id="photo" accept="image/*" capture="environment"></div><p class="note">The photo option opens your phone's native camera if live video is unavailable.</p></section>
+<p class="note" style="padding:5px 4px">This scanner never accesses your Google Sheets, POS password, or private records. It only reads a barcode and returns its digits to your existing signed-in POS.</p>
+</main>
+<script>
+(function(){'use strict';
+const $=id=>document.getElementById(id),params=new URLSearchParams(location.search);
+const allowedOrigin=params.get('kv_parent_origin')||'',nonce=params.get('kv_nonce')||'';
+let scanner=null,running=false,code='',ready=null;
+function status(v,bad){const x=$('status');x.textContent=v;x.classList.toggle('error',!!bad)}
+function accept(v){v=String(v||'').trim();if(!/^\d{6,20}$/.test(v)){status('Barcode must contain 6–20 digits.',true);return}code=v;$('found').textContent=v;$('success').style.display='block';$('typed').value=v;status('Barcode captured. Tap Send to POS or Copy digits.');stop();}
+async function loadLibrary(){
+ if(window.Html5Qrcode)return;
+ if(ready)return ready;
+ ready=new Promise((resolve,reject)=>{
+  const fallback=['https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js','https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'];
+  const load=i=>{if(i>=fallback.length){reject(Error('Could not load barcode reader. Check your internet connection.'));return}
+   const s=document.createElement('script');s.src=fallback[i];s.async=true;s.onload=()=>window.Html5Qrcode?resolve():load(i+1);s.onerror=()=>load(i+1);document.head.appendChild(s)};load(0);
+ }).catch(e=>{ready=null;throw e});return ready;
+}
+async function start(){
+ if(running)return;
+ if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia){status('Camera requires a top-level HTTPS page in Safari or Chrome. Do not use file:// or an embedded browser.',true);return}
+ $('start').disabled=true;status('Requesting your camera permission…');
+ try{
+  await loadLibrary();
+  // Use supported common 1D product barcode formats plus QR; QR is a fallback.
+  const formats=window.Html5QrcodeSupportedFormats;
+  const opts={verbose:false};
+  if(formats)opts.formatsToSupport=['EAN_13','EAN_8','UPC_A','UPC_E','CODE_128','CODE_39','CODE_93','ITF','QR_CODE'].map(k=>formats[k]).filter(x=>typeof x==='number');
+  scanner=new Html5Qrcode('reader',opts);
+  const onScan=result=>accept(result);
+  const settings={fps:10,qrbox:(w,h)=>({width:Math.min(290,Math.max(150,Math.floor(w*.88))),height:Math.min(140,Math.max(80,Math.floor(h*.52)))})};
+  try{await scanner.start({facingMode:'environment'},settings,onScan,()=>{});}
+  catch(e){const cams=await Html5Qrcode.getCameras().catch(()=>[]);if(!cams.length)throw e;
+   const back=cams.find(x=>/back|rear|environment/i.test(x.label||''))||cams[cams.length-1];
+   await scanner.start(back.id,settings,onScan,()=>{});
+  }
+  running=true;$('stop').disabled=false;status('Camera ready. Hold the whole barcode steady in the frame.');
+ }catch(e){status('Could not open camera: '+String(e.message||e)+'. Check Safari/Chrome camera permissions and try again.',true);if(scanner){try{await scanner.clear()}catch(_){}}scanner=null}
+ finally{$('start').disabled=false}
+}
+async function stop(){
+ if(!scanner)return;
+ const s=scanner;scanner=null;running=false;$('stop').disabled=true;
+ try{await s.stop()}catch(e){}try{await s.clear()}catch(e){}
+}
+function transfer(){
+ if(!code){status('Scan or type a barcode first.',true);return}
+ if(window.opener&&nonce&&/^https:\/\/[a-z0-9.-]+(?::[0-9]+)?$/i.test(allowedOrigin)){
+  try{window.opener.postMessage({source:'kv-live-scanner-v1',nonce,barcode:code},allowedOrigin);status('Barcode sent to POS. Return to your POS tab to confirm.');window.setTimeout(()=>window.close(),800);return}catch(e){status('Safari blocked automatic return. Copy the barcode and paste it into your POS.',true)}
+ }else status('No connected POS tab found. Tap Copy digits and paste them into the barcode field in your POS.',true)
+}
+async function copy(){if(!code)return;try{await navigator.clipboard.writeText(code);status('Barcode '+code+' copied. Paste it into your POS.')}catch(e){$('typed').focus();$('typed').select();status('Copy unavailable. Select the digits and use Copy.',true)}}
+$('start').onclick=start;$('stop').onclick=stop;$('return').onclick=transfer;$('copy').onclick=copy;
+$('manual').onclick=()=>accept($('typed').value);$('typed').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();accept(e.target.value)}});
+$('photo').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;
+ try{await stop();await loadLibrary();const id='reader';const x=new Html5Qrcode(id,{verbose:false});try{accept(await x.scanFile(file,true))}finally{try{await x.clear()}catch(err){}}}
+ catch(err){status('Photo did not scan: '+String(err.message||err)+'. Try good lighting, or enter the digits.',true)}e.target.value='';};
+$('permission').textContent=location.protocol==='https:'?'HTTPS camera page':'HTTPS required';
+})();
+</script></body></html>
